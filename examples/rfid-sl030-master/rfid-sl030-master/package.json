@@ -1,0 +1,42 @@
+{
+  "name": "rfid-sl030",
+  "description": "Access an SL030 RFID reader on a Raspberry Pi",
+  "keywords": [
+    "rfid",
+    "i2c",
+    "raspberry pi"
+  ],
+  "license": "Apache-2.0",
+  "version": "0.1.0",
+  "author": {
+    "name": "MCQN Ltd",
+    "email": "adrianm@mcqn.com",
+    "url": "http://www.mcqn.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:mcqn/rfid-sl030.git"
+  },
+  "main": "./lib/rfid-sl030.js",
+  "dependencies": {
+    "ffi": "~1.2.7",
+    "ref": "~0.3.2",
+    "sleep": ">=1.1.8",
+    "ref-struct": "~0.0.6",
+    "exec-sync": "~0.1.6"
+  },
+  "bugs": {
+    "url": "https://github.com/mcqn/rfid-sl030/issues"
+  },
+  "homepage": "https://github.com/mcqn/rfid-sl030",
+  "_npmUser": {
+    "name": "amcewen",
+    "email": "info@mcqn.com"
+  },
+  "maintainers": [
+    {
+      "name": "amcewen",
+      "email": "info@mcqn.com"
+    }
+  ]
+}

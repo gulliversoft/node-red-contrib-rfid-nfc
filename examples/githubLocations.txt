@@ -1,0 +1,54 @@
+https://github.com/mcqn/rfid-sl030.git
+https://github.com/mcqn/rfid-sl030
+
+rfid-sl030
+
+Node.js module for a Raspberry Pi to talk to an SL030 RFID reader
+
+Because of how the library accesses the i2c bus, it needs to be run as root. The default baud rate used to talk to the i2c bus also seems to produce unreliable results with the SL030 hardware. If you're seeing the "Check modprobe baud rate" message then you should run the following commands before using this module:
+
+sudo modprobe -r i2c-bcm2708
+sudo modprobe i2c-bcm2708 baudrate=200000
+Creating libbcm2835.so
+
+Download and build Mike McCauley's libbcm2835 library
+By default that creates a src/libbcm2835.a, whereas we want a .so. To create that, run this in the bcm2835-1.50 directory: gcc -shared -o src/libbcm2835.so -fPIC src/bcm2835.c
+
+
+---------------------------------------------------------------------
+
+
+https://github.com/mcqn/node-red-contrib-nfc
+node-red-contrib-nfc
+
+NFC reader node for Node RED. Requires an I2C-connected SL030 RFID/NFC reader. Must be run as root (for access to the i2c bus in /dev/mem)
+
+Nodes
+
+rpi rfid Generates events when a tag is presented or removed.
+rpi rfid read Read a block from a Mifare tag
+rpi rfid write Write a block to a Mifare tag
+rpi rfid read ndef Read and decode any NDEF records in a Mifare or NTAG2xx tag
+rpi rfid write ndef Write NDEF records to a Mifare or NTAG2xx tag
+
+
+-----------------------------------------------------------------
+Since on Galileo we utilize mraa instead, there is a chance to call:
+
+var mraa = new require("mraa"); //require mraa
+console.log('MRAA Version: ' + mraa.getVersion());
+var myOnboardLed = new mraa.Gpio(13); //LED hooked up to digital pin 13 (or built in pin on Galileo Gen1 & Gen2)
+myOnboardLed.dir(mraa.DIR_OUT); //set the gpio direction to output
+var ledState = true; //Boolean to hold the state of Led
+
+periodicActivity(); //call the periodicActivity function
+
+function periodicActivity()
+{
+  myOnboardLed.write(ledState?1:0); //if ledState is true then write a '1' (high) otherwise write a '0' (low)
+  ledState = !ledState; //invert the ledState
+  setTimeout(periodicActivity,1000); //call the indicated function after 1 second (1000 milliseconds)
+}
+
+On Galileo, the code above could be replaced with: D:\factory\IOT2000\SDCard\.node-red\node_modules\galileo-io\eg\blink.js
+In order of direct calling I2c, just refer to D:\factory\IOT2000\SDCard\.node-red\node_modules\galileo-io\eg\i2c-write.js

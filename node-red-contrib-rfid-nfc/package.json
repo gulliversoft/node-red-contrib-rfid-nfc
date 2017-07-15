@@ -1,0 +1,23 @@
+{
+    "name"          : "node-red-contrib-rfid-nfc",
+    "version"       : "1.0.0",
+    "description"   : "A Node-RED node. Offers ability of reading MiFare cards, on SIMATIC IOT2040 by using mraa",
+    "dependencies"  : {
+    },
+    "repository" : {
+        "type":"git",
+        "url":"https://github.com/node-red/node-red-nodes/tree/master/hardware/siemens"
+    },
+    "license": "Apache-2.0",
+    "keywords": [ "node-red", "intel", "galileo", "IOT2040", "siemens", "PN532", "NFC" ],
+    "node-red"      : {
+        "nodes"     : {
+            "PN532": "PN532.js"
+        }
+    },
+    "author": {
+        "name": "Martin Shishkov",
+        "email": "fg7@go4more.de",
+        "url": "http://nodered.org"
+    }
+} 

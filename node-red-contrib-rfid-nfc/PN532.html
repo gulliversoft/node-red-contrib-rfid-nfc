@@ -1,0 +1,28 @@
+<script type="text/javascript">
+    RED.nodes.registerType('PN532',{
+        category: 'Periphery I2C',
+        color: '#a6bbcf',
+        defaults: {
+            name: {value:""}
+        },
+        inputs:1,
+        outputs:1,
+        icon: "nfc_rfid-icon36.png",
+        label: function() {
+            return this.name||"PN532";
+        }
+    });
+</script>
+
+<script type="text/x-red" data-template-name="node-red-contrib-rfid-nfc">
+    <div class="form-row">
+        <label for="node-input-name"><i class="icon-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+</script>
+
+<script type="text/x-red" data-help-name="rfid_nfc">
+    <p>The node has the ability to read MiFare cards, including the hard-coded ID
+numbers, as well as authenticate and read/write EEPROM chunks. It can work with both
+the breakout and shield using either a SPI or I2C connection.</p>
+</script>
