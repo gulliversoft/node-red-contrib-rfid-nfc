@@ -1,4 +1,6 @@
 
+//https://iotdk.intel.com/docs/master/mraa/node/classes/common.html
+//https://jasongfox.com/2015/08/17/building-a-device-driver-using-mraa-and-javascript-introduction/
 var node;
 var Buffer;
 module.exports = function (RED) {
@@ -8,7 +10,11 @@ module.exports = function (RED) {
         node.on('input', function (msg) {
             //msg.payload = most_easiest_getFirmwareVersion();
             //node.send(msg);
-            msg.payload = easygetFirmwareVersion();
+            //msg.payload = easygetFirmwareVersion();
+            NFC.begin();
+            NFC.SAMConfig();
+            msg.payload = NFC.getFirmwareVersion();
+            //GALILEO.periodicActivity();
             node.send(msg);
         });
     }
@@ -16,124 +22,6 @@ module.exports = function (RED) {
 }
 
 var PN532_I2C_ADDRESS = 2;
-/**************************************************************************/
-/*! 
-@brief  More simplified read of the firmware version of the PN5xx chip
-
-@returns  The chip's firmware version and ID
-*/
-/**************************************************************************/
-function most_easiest_getFirmwareVersion() {
-    var response = "None"
-    var PN532_COMMAND_GETFIRMWAREVERSION = 0x02;
-    var PN532_PACKBUFFSIZ = 64;
-    var pn532_packetbuffer = Array(PN532_PACKBUFFSIZ);
-    wirebegin();
-    WIRE.writecmd(PN532_COMMAND_GETFIRMWAREVERSION, 1);
-    if (readackframe()) {
-        sleep(10);
-        // read data packet
-        wirereaddata(pn532_packetbuffer, 12);
-
-        for (var i = 0; i < 12; i++) {
-            node.warn(pn532_packetbuffer[i]);
-        }
-        response = "The PN532 sends back the version of the embedded firmware."
-    }
-
-    return response;
-}
-/**************************************************************************/
-/*! 
-@brief  Simplified read of the firmware version of the PN5xx chip
-
-@returns  The chip's firmware version and ID
-*/
-/**************************************************************************/
-function easygetFirmwareVersion() {
-    var PN532_COMMAND_GETFIRMWAREVERSION = 0x02;
-    var PN532_PACKBUFFSIZ = 64;
-    var pn532_packetbuffer = Array(PN532_PACKBUFFSIZ);
-    var response = 0;
-    var cmd_get_fw_version = [0x00, 0xFF, 0x02, 0xFE, 0xD4, 0x02, 0x2A];
-    wirebegin();
-    for (var i = 0; i < cmd_get_fw_version.length; i++) {
-        wiresend(cmd_get_fw_version[i]);
-    }
-    if (readackframe()) {
-        sleep(10);
-        // read data packet
-        pn532_packetbuffer = wirereaddata(pn532_packetbuffer, 12);
-
-        for (i = 0; i < 12; i++) {
-            node.warn(pn532_packetbuffer[i]);
-        }
-        response = "The PN532 sends back the version of the embedded firmware."
-    }
-
-    return response;
-}
-
-/**************************************************************************/
-/*! 
-@brief  Checks the firmware version of the PN5xx chip
-
-@returns  The chip's firmware version and ID
-*/
-/**************************************************************************/
-function getFirmwareVersion() {
-    var pn532response_firmwarevers = [0x00, 0xFF, 0x06, 0xFA, 0xD5, 0x03];
-    var PN532_COMMAND_GETFIRMWAREVERSION = 0x02;
-    var PN532_PACKBUFFSIZ = 64;
-    var response = 0;
-    var pn532_packetbuffer = Array(PN532_PACKBUFFSIZ);
-    pn532_packetbuffer[0] = PN532_COMMAND_GETFIRMWAREVERSION;
-    var get_fw_version = [0x00, 0xFF, 0x02, 0xFE, 0xD4, 0x02, 0x2A];
-
-    if (!sendCommandCheckAck(pn532_packetbuffer, 1))
-        return 0;
-
-    // read data packet
-    pn532_packetbuffer = wirereaddata(pn532_packetbuffer, 12);
-
-
-    response = pn532_packetbuffer[7];
-    response <<= 8;
-    response |= pn532_packetbuffer[8];
-    response <<= 8;
-    response |= pn532_packetbuffer[9];
-    response <<= 8;
-    response |= pn532_packetbuffer[10];
-
-    return response;
-}
-/**************************************************************************/
-/*! 
-@brief  Sends a command and waits a specified period for the ACK
-
-@param  cmd       Pointer to the command buffer
-@param  cmdlen    The size of the command in bytes 
-@param  timeout   timeout before giving up
-    
-@returns  1 if everything is OK, 0 if timeout occured before an
-ACK was recieved
-*/
-/**************************************************************************/
-// default timeout of one second
-function sendCommandCheckAck(cmd, cmdlen) 
-{
-    // write the command
-    wiresendcommand(cmd, cmdlen);
-   
-  // read acknowledgement
-  if (!readackframe()) {
-    this.error("No ACK frame received!");
-    return false;
-  }
-
-  return true; // ack'd command
-}
-
 
 function sleep(milliseconds) {
     var start = new Date().getTime();
@@ -143,163 +31,235 @@ function sleep(milliseconds) {
         }
     }
 }
-/************** mid level I2C */
 
 /**************************************************************************/
 /*! 
-@brief  Checks the IRQ pin to know if the PN532 is ready
+@brief  PN532 nfc shield abstraction
+*/
+/**************************************************************************/
+var NFC = {
+    PN532_PACKBUFFSIZ: 64,
+    PN532_COMMAND_DIAGNOSE: 0x00,
+    PN532_COMMAND_GETFIRMWAREVERSION: 0x02,
+    PN532_COMMAND_GETGENERALSTATUS: 0x04,
+    PN532_COMMAND_READREGISTER: 0x06,
+    PN532_COMMAND_WRITEREGISTER: 0x08,
+    PN532_COMMAND_READGPIO: 0x0C,
+    PN532_COMMAND_WRITEGPIO: 0x0E,
+    PN532_COMMAND_SETSERIALBAUDRATE: 0x10,
+    PN532_COMMAND_SETPARAMETERS: 0x12,
+    PN532_COMMAND_SAMCONFIGURATION: 0x14,
+    PN532_COMMAND_POWERDOWN: 0x16,
+    PN532_COMMAND_RFCONFIGURATION: 0x32,
+    PN532_COMMAND_RFREGULATIONTEST: 0x58,
+    PN532_COMMAND_INJUMPFORDEP: 0x56,
+    PN532_COMMAND_INJUMPFORPSL: 0x46,
+    PN532_COMMAND_INLISTPASSIVETARGET: 0x4A,
+    PN532_COMMAND_INATR: 0x50,
+    PN532_COMMAND_INPSL: 0x4E,
+    PN532_COMMAND_INDATAEXCHANGE: 0x40,
+    PN532_COMMAND_INCOMMUNICATETHRU: 0x42,
+    PN532_COMMAND_INDESELECT: 0x44,
+    PN532_COMMAND_INRELEASE: 0x52,
+    PN532_COMMAND_INSELECT: 0x54,
+    PN532_COMMAND_INAUTOPOLL: 0x60,
+    PN532_COMMAND_TGINITASTARGET: 0x8C,
+    PN532_COMMAND_TGSETGENERALBYTES: 0x92,
+    PN532_COMMAND_TGGETDATA: 0x86,
+    PN532_COMMAND_TGSETDATA: 0x8E,
+    PN532_COMMAND_TGSETMETADATA: 0x94,
+    PN532_COMMAND_TGGETINITIATORCOMMAND: 0x88,
+    PN532_COMMAND_TGRESPONSETOINITIATOR: 0x90,
+    PN532_COMMAND_TGGETTARGETSTATUS: 0x8A,
+    PN532_RESPONSE_INDATAEXCHANGE: 0x41,
+    PN532_RESPONSE_INLISTPASSIVETARGET: 0x4B,
+    PN532_WAKEUP: 0x55,
+    response: 0,
+    pin: 3,
+    /**************************************************************************/
+    /*! 
+    @brief  Configures the SAM (Secure Access Module)
+    */
+    /**************************************************************************/
+    SAMConfig: function () {
+        var pn532_packetbuffer = Array(this.PN532_PACKBUFFSIZ);
+        pn532_packetbuffer[0] = this.PN532_COMMAND_SAMCONFIGURATION;
+        pn532_packetbuffer[1] = 0x01; // normal mode;
+        pn532_packetbuffer[2] = 0x14; // timeout 50ms * 20 = 1 second
+        pn532_packetbuffer[3] = 0x01; // use IRQ pin! 
+
+        if (!this.sendCommandCheckAck(pn532_packetbuffer, 4))
+            return false;
+
+        // read data packet
+        this.readData(pn532_packetbuffer, 8);
+        return (pn532_packetbuffer[6] == 0x15);
+    },
+    begin: function () {
+        WIRE.setBusAddress();
+
+        // Reset the PN532  
+        var res1 = GALILEO.digitalWrite(this.pin, GALILEO.HIGH);
+        var res2 = GALILEO.digitalWrite(this.pin, GALILEO.LOW);
+        sleep(400);
+        var res3 = GALILEO.digitalWrite(this.pin, GALILEO.HIGH);
+        node.warn("HIGH:" + res1 + " LOW:" + res2 + " HIGH:" + res3);
+
+    },
+    /**************************************************************************/
+    /*! 
+    @brief  Checks the firmware version of the PN5xx chip
+
+    @returns  The chip's firmware version and ID
+    */
+    /**************************************************************************/
+    getFirmwareVersion: function () {
+        var response = 0;
+        var pn532_packetbuffer = Array(this.PN532_PACKBUFFSIZ);
+        pn532_packetbuffer[0] = this.PN532_COMMAND_GETFIRMWAREVERSION;
+
+        if (!this.sendCommandCheckAck(pn532_packetbuffer, 1))
+            return 0;
+
+        // read data packet
+        pn532_packetbuffer = this.readData(pn532_packetbuffer, 12);
+
+
+        response = pn532_packetbuffer[7];
+        response <<= 8;
+        response |= pn532_packetbuffer[8];
+        response <<= 8;
+        response |= pn532_packetbuffer[9];
+        response <<= 8;
+        response |= pn532_packetbuffer[10];
+
+        return response;
+    },
+    /**************************************************************************/
+    /*! 
+    @brief  Checks the IRQ pin to know if the PN532 is ready
 	
-@returns 0 if the PN532 is busy, 1 if it is free
-*/
-/**************************************************************************/
-function wirereadstatus() {
-    var PN532_I2C_READY = 0x01;
-    var PN532_I2C_BUSY = 0x00;
-    var _irq = 2;
-    var x = digitalRead(_irq);
-  
-      if (x == 1)
-        return PN532_I2C_BUSY;
-      else
-        return PN532_I2C_READY;
- }
+    @returns 0 if the PN532 is busy, 1 if it is free
+    */
+    /**************************************************************************/
+    readStatus: function () {
+        var PN532_I2C_READY = 0x01;
+        var PN532_I2C_BUSY = 0x00;
+        var x = GALILEO.digitalRead(this.pin);
+        if (x == 1)
+            return PN532_I2C_BUSY;
+        else
+            return PN532_I2C_READY;
+    },
+    /**************************************************************************/
+    /*! 
+    @brief  Sends a command and waits a specified period for the ACK
 
- function digitalRead(irq) {
-     GALILEO.digitalRead();
-     return GALILEO.interrupt;
- }
+    @param  cmd       Pointer to the command buffer
+    @param  cmdlen    The size of the command in bytes 
+    @param  timeout   timeout before giving up
+    
+    @returns  1 if everything is OK, 0 if timeout occured before an
+    ACK was recieved
+    */
+    /**************************************************************************/
+    sendCommandCheckAck: function (cmd, cmdlen) {
+        // write the command
+        this.sendCommand(cmd, cmdlen);
 
-/**************************************************************************/
-/*! 
-@brief  Tries to read the PN532 ACK frame (not to be confused with 
-the I2C ACK signal)
-*/
-/**************************************************************************/
-function readackframe() {
-    var pn532ack = [0x00, 0x00, 0xFF, 0x00, 0xFF, 0x00];
-    var ackbuff = [0, 0, 0, 0, 0, 0];
-    var timer = 0;
-    var timeout = 1000;
-    var PN532_I2C_READY = 0x01;
-
-    // Wait for chip to say its ready!
-    while (wirereadstatus() != PN532_I2C_READY) {
-        if (timeout != 0) {
-            timer += 10;
-            if (timer > timeout)
-                return false;
+        // read acknowledgement
+        if (!this.readAckFrame()) {
+            this.error("No ACK frame received!");
+            return false;
         }
-        sleep(10);
-    }
 
-    node.warn("IRQ received");
-    ackbuff = wirereaddata(ackbuff, ackbuff.length);
+        return true; // ack'd command
+    },
+    /**************************************************************************/
+    /*! 
+    @brief  Tries to read the PN532 ACK frame (not to be confused with 
+    the I2C ACK signal)
+    */
+    /**************************************************************************/
+    readAckFrame: function () {
+        var ackbuff = [0, 0, 0, 0, 0, 0];
+        var timer = 0;
+        var timeout = 1000;
+        var PN532_I2C_READY = 0x01;
 
-    if (ackbuff == pn532ack) {
+        // Wait for chip to say its ready!
+        while (this.readStatus() != PN532_I2C_READY) {
+            if (timeout != 0) {
+                timer += 10;
+                if (timer > timeout)
+                    return false;
+            }
+            sleep(10);
+        }
+
+        node.warn("IRQ received");
+        ackbuff = this.readData(ackbuff, ackbuff.length);
+        var ackOK = [0x00, 0x00, 0xFF, 0x00, 0xFF, 0x00];
+        for(var i = 0; i < ackbuff.length; i++)
+        {
+            if (ackbuff[i] != ackOK[i]) 
+            {
+                return false;
+            }
+        }
         return true;
-    }
-    return false;
-}
-/**************************************************************************/
-/*! 
+    },
+    /**************************************************************************/
+    /*! 
+    @brief  Writes a command to the PN532, automatically inserting the
+    preamble and required frame details (checksum, len, etc.)
+    @param  cmd       Pointer to the command buffer
+    @param  cmdlen    Command length in bytes 
+    */
+    /**************************************************************************/
+    sendCommand: function (cmd, cmdlen) {
+        var checksum;
+        var PN532_PREAMBLE = 0x00;
+        var PN532_STARTCODE1 = 0x00;
+        var PN532_STARTCODE2 = 0xFF;
+        var PN532_POSTAMBLE = 0x00;
+        var PN532_HOSTTOPN532 = 0xD4;
+        var PN532_PN532TOHOST = 0xD5;
+        sleep(2); // or whatever the delay is for waking up the board
+
+        // I2C START
+        WIRE.setBusAddress();
+        checksum = 0;
+        node.warn("Send 00 00 ff 0" + (cmdlen + 1) + " " + (0xFF + ~cmdlen + 1).toString(16) + " d4 " + cmd[0].toString(16) + "..." + (0xFF + ~PN532_HOSTTOPN532 + 1 - cmdlen).toString(16) + " 00");
+        WIRE.send(PN532_PREAMBLE);
+        WIRE.send(PN532_PREAMBLE);
+        WIRE.send(PN532_STARTCODE2);
+        WIRE.send(cmdlen + 1);
+        WIRE.send(0xFF + ~cmdlen + 1);
+        WIRE.send(PN532_HOSTTOPN532);
+
+        for (var i = 0; i < cmdlen; i++) {
+            WIRE.send(cmd[i]);
+            checksum += cmd[i];
+        }
+        WIRE.send(0xFF + ~checksum + 1 - cmdlen);
+        WIRE.send(PN532_POSTAMBLE);
+
+        // I2C STOP
+        //WIRE.endTransmission();
+    },
+    /**************************************************************************/
+    /*! 
     @brief  Reads n bytes of data from the PN532 via I2C
     @param  buff      Pointer to the buffer where data will be written
     @param  len         Number of bytes to be read
-*/
-/**************************************************************************/
-function wirereaddata(buff, len) {
-  node.warn("Reading data: ");
-  buff = WIRE.receivemultibyte(buff, len);
-  return buff; 
-}
-/**************************************************************************/
-/*! 
-    @brief  Writes a command to the PN532, automatically inserting the
-            preamble and required frame details (checksum, len, etc.)
-    @param  cmd       Pointer to the command buffer
-    @param  cmdlen    Command length in bytes 
-*/
-/**************************************************************************/
-function wiresendcommand(cmd, cmdlen) {
-    var checksum;
-    var PN532_PREAMBLE = 0x00;
-    var PN532_STARTCODE1 = 0x00
-    var PN532_STARTCODE2 = 0xFF;
-    var PN532_POSTAMBLE = 0x00;
-    var PN532_HOSTTOPN532 = 0xD4;
-    var PN532_PN532TOHOST = 0xD5;
-    cmdlen++;
-  
-    node.warn("Sending: ");
-
-    sleep(2);     // or whatever the delay is for waking up the board
-
-    // I2C START
-    wirebegin();
-    checksum = PN532_PREAMBLE + PN532_PREAMBLE + PN532_STARTCODE2;
-    node.warn("Send " + PN532_PREAMBLE); //0
-    wiresend(PN532_PREAMBLE);
-    node.warn("Send " + PN532_PREAMBLE); //0
-    wiresend(PN532_PREAMBLE);
-    node.warn("Send " + PN532_STARTCODE2); //255
-    wiresend(PN532_STARTCODE2);
-    node.warn("Send " + cmdlen); //2
-    wiresend(cmdlen);
-    node.warn("Send " + cmdlen + 1); //21
-    wiresend(cmdlen + 1);
-    node.warn("Send " + PN532_HOSTTOPN532); //212
-    wiresend(PN532_HOSTTOPN532);
-    checksum += PN532_HOSTTOPN532;
-
-    for (var i = 0; i < cmdlen-1; i++) 
-    {
-       node.warn(" 0x" + cmd[i]); //0x2
-       wiresend(cmd[i]);
-       checksum += cmd[i];
+    */
+    /**************************************************************************/
+    readData: function (buff, len) {
+        node.warn("Reading data: ");
+        buff = WIRE.receivemultibyte(buff, len);
+        return buff;
     }
-    node.warn("Send " + checksum); //469
-    wiresend(checksum);
-    node.warn("Send " + PN532_POSTAMBLE);
-    wiresend(PN532_POSTAMBLE);
-  
-    // I2C STOP
-    //wirestop();
-} 
-/**************************************************************************/
-/*! 
-    @brief  Sends a single byte via I2C
-
-    @param  x    The byte to send
-*/
-/**************************************************************************/
-function wiresend(x) 
-{   
-    WIRE.send(x);
-}
-/**************************************************************************/
-/*! 
-    @brief  Reads a single byte via I2C
-*/
-/**************************************************************************/
-function wirerecv() 
-{
-    return WIRE.receive();
-}
-/**************************************************************************/
-/*! 
-@brief  activates the bus transfer
-*/
-/**************************************************************************/
-function wirebegin(){
-    WIRE.beginTransmission();
-}
-/**************************************************************************/
-/*! 
-@brief  stops the bus transfer
-*/
-/**************************************************************************/
-function wirestop() {
-    return WIRE.endTransmission();
 }
 /**************************************************************************/
 /*! 
@@ -308,21 +268,42 @@ function wirestop() {
 /**************************************************************************/
 var GALILEO = {
     pin: 2,
+    HIGH: 0x1,
+    LOW: 0x0,
+    INPUT: 0x0,
+    OUTPUT: 0x1,
     interrupt: 0,
     vendor: 0,
     value: 0,
+    activeISR: 0,
     _mraa: require("mraa"),
-    x: 0,
-    digitalRead: function (_irq) {
-        this.pin = _irq;
+    _gpio: 0,
+    periodicActivity: function () {
+        this.interrupt = this.x.read();
+        setTimeout(periodicActivity, 500);
+    },
+    digitalWrite: function (pin, level) {
+        this.pin = pin;
+        this._gpio = new this._mraa.Gpio(parseInt(this.pin));
+        /*Set the mode General Purpose IO*/
+        this._gpio.mode(this._mraa.PIN_GPIO);
+        this._gpio.dir(this._mraa.DIR_OUT_HIGH);
+        var result = this._gpio.write(level);
+        return result;
+    },
+    digitalRead: function (pin) {
+        this.pin = pin;
+        this.activeISR = 1;
         this.vendor = this._mraa.getPlatformName();
         node.warn(this.vendor);
-        this.x = new this._mraa.Gpio(parseInt(this.pin));
-        this.x.mode(this._mraa.PIN_GPIO);
-        this.x.dir(this._mraa.DIR_IN);
-        this.x.isr(this._mraa.EDGE_BOTH, function () {
-            var g = this.x.read();
-            var msg = { payload: g, topic: this.board + "/D" + this.pin };
+        this._gpio = new this._mraa.Gpio(parseInt(this.pin));
+        /*Set the mode General Purpose IO*/
+        this._gpio.mode(this._mraa.PIN_GPIO);
+        this._gpio.dir(this._mraa.DIR_IN);
+        /*Interrupt on rising & falling*/
+        this._gpio.isr(this._mraa.EDGE_BOTH, function () {
+            this.interrupt = this._gpio.read();
+            var msg = { payload: this.interrupt, topic: this.board + "/D" + this.pin };
             node.warn(msg);
             switch (g) {
                 case 0:
@@ -341,6 +322,9 @@ var GALILEO = {
                     node.status({ fill: "grey", shape: "ring", text: "unknown" });
             }
         })
+
+        sleep(100);
+        return this.interrupt;
     }
 }
 /**************************************************************************/
@@ -390,7 +374,7 @@ var WIRE = {
         this.i2c.stop();
     },
 
-    beginTransmission: function () {
+    setBusAddress: function () {
         this.i2c.address(parseInt(this.I2C_ADDRESS));
     },
 
