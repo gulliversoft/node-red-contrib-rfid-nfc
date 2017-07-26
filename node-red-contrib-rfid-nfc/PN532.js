@@ -8,20 +8,21 @@ module.exports = function (RED) {
         RED.nodes.createNode(this, config);
         node = this;
         node.on('input', function (msg) {
-            //msg.payload = most_easiest_getFirmwareVersion();
-            //node.send(msg);
-            //msg.payload = easygetFirmwareVersion();
             NFC.begin();
-            NFC.SAMConfig();
-            msg.payload = NFC.getFirmwareVersion();
-            //GALILEO.periodicActivity();
-            node.send(msg);
+            GALILEO.activateISR();
+            if (NFC.SAMConfig()) {
+                msg.payload = NFC.getFirmwareVersion();
+                node.send(msg);
+            }
+            else {
+                node.send("Configuration error");
+            }
         });
     }
     RED.nodes.registerType("PN532", PN532);
 }
 
-var PN532_I2C_ADDRESS = 2;
+var PN532_I2C_ADDRESS = 0x48;
 
 function sleep(milliseconds) {
     var start = new Date().getTime();
@@ -75,7 +76,7 @@ var NFC = {
     PN532_RESPONSE_INLISTPASSIVETARGET: 0x4B,
     PN532_WAKEUP: 0x55,
     response: 0,
-    pin: 3,
+    pin: 2,
     /**************************************************************************/
     /*! 
     @brief  Configures the SAM (Secure Access Module)
@@ -145,7 +146,7 @@ var NFC = {
     readStatus: function () {
         var PN532_I2C_READY = 0x01;
         var PN532_I2C_BUSY = 0x00;
-        var x = GALILEO.digitalRead(this.pin);
+        var x = GALILEO.digitalRead();
         if (x == 1)
             return PN532_I2C_BUSY;
         else
@@ -169,7 +170,7 @@ var NFC = {
 
         // read acknowledgement
         if (!this.readAckFrame()) {
-            this.error("No ACK frame received!");
+            node.error("No ACK frame received!");
             return false;
         }
 
@@ -200,10 +201,9 @@ var NFC = {
         node.warn("IRQ received");
         ackbuff = this.readData(ackbuff, ackbuff.length);
         var ackOK = [0x00, 0x00, 0xFF, 0x00, 0xFF, 0x00];
-        for(var i = 0; i < ackbuff.length; i++)
-        {
-            if (ackbuff[i] != ackOK[i]) 
-            {
+        for (var i = 0; i < ackbuff.length; i++) {
+            node.warn("Ack: " + (+ackbuff[i]).toString(16));
+            if (ackbuff[i] != ackOK[i]) {
                 return false;
             }
         }
@@ -257,7 +257,10 @@ var NFC = {
     /**************************************************************************/
     readData: function (buff, len) {
         node.warn("Reading data: ");
-        buff = WIRE.receivemultibyte(buff, len);
+        for (var i = 0; i < len; i++) {
+            buff[i] = WIRE.receive()
+        }
+        //buff = WIRE.receivemultibyte(buff, len);
         return buff;
     }
 }
@@ -275,11 +278,10 @@ var GALILEO = {
     interrupt: 0,
     vendor: 0,
     value: 0,
-    activeISR: 0,
     _mraa: require("mraa"),
     _gpio: 0,
     periodicActivity: function () {
-        this.interrupt = this.x.read();
+        this.interrupt = this._gpio.read();
         setTimeout(periodicActivity, 500);
     },
     digitalWrite: function (pin, level) {
@@ -291,39 +293,59 @@ var GALILEO = {
         var result = this._gpio.write(level);
         return result;
     },
-    digitalRead: function (pin) {
-        this.pin = pin;
-        this.activeISR = 1;
+    activateISR: function ()
+    {
         this.vendor = this._mraa.getPlatformName();
         node.warn(this.vendor);
         this._gpio = new this._mraa.Gpio(parseInt(this.pin));
         /*Set the mode General Purpose IO*/
         this._gpio.mode(this._mraa.PIN_GPIO);
         this._gpio.dir(this._mraa.DIR_IN);
+
         /*Interrupt on rising & falling*/
-        this._gpio.isr(this._mraa.EDGE_BOTH, function () {
-            this.interrupt = this._gpio.read();
+        this._gpio.isr(this._mraa.EDGE_BOTH, function () 
+        {
             var msg = { payload: this.interrupt, topic: this.board + "/D" + this.pin };
             node.warn(msg);
-            switch (g) {
+            switch (this._gpio.read()) 
+            {
                 case 0:
-                    node.status({ fill: "green", shape: "ring", text: "low" });
-                    if (this.interrupt === "f" || this.interrupt === "b") {
+                    this.interrupt = 0;
+                    node.status({ fill: "green", shape: "ring", text: "ISR low" });
+                    if (this.interrupt === "f" || this.interrupt === "b") 
+                    {
                         node.send(msg);
                     }
                     break;
                 case 1:
-                    node.status({ fill: "green", shape: "dot", text: "high" });
-                    if (this.interrupt === "r" || this.interrupt === "b") {
+                    this.interrupt = 1;
+                    node.status({ fill: "green", shape: "dot", text: "ISR high" });
+                    if (this.interrupt === "r" || this.interrupt === "b") 
+                    {
                         node.send(msg);
                     }
                     break;
                 default:
-                    node.status({ fill: "grey", shape: "ring", text: "unknown" });
+                    node.status({ fill: "grey", shape: "ring", text: "ISR unknown" });
             }
         })
+    },
+    digitalRead: function () 
+    {
+        switch (this._gpio.read()) 
+        {
+           case 0:
+               this.interrupt = 0;
+               node.status({ fill: "red ", shape: "ring", text: "low" });
+               break;
+           case 1:
+               this.interrupt = 1;
+               node.status({ fill: "green", shape: "dot", text: "high" });
+               break;
+           default:
+               node.status({});
+       }
 
-        sleep(100);
         return this.interrupt;
     }
 }
@@ -335,7 +357,7 @@ var GALILEO = {
 var WIRE = {
     MAX_BUFFER_LENGTH: 6,
     CONF_BUFFER_LENGTH: 2,
-    I2C_ADDRESS: 2,
+    I2C_ADDRESS: 0x48,
     conf_buff: 0,
     rx_tx_buf: [0, 0, 0, 0, 0, 0],
     i2c: initI2C(PN532_I2C_ADDRESS),
