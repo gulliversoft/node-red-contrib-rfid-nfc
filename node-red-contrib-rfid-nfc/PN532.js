@@ -1,6 +1,4 @@
 
-//https://iotdk.intel.com/docs/master/mraa/node/classes/common.html
-//https://jasongfox.com/2015/08/17/building-a-device-driver-using-mraa-and-javascript-introduction/
 var node;
 var Buffer;
 module.exports = function (RED) {
@@ -97,8 +95,6 @@ var NFC = {
         return (pn532_packetbuffer[6] == 0x15);
     },
     begin: function () {
-        WIRE.setBusAddress();
-
         // Reset the PN532  
         var res1 = GALILEO.digitalWrite(this.pin, GALILEO.HIGH);
         var res2 = GALILEO.digitalWrite(this.pin, GALILEO.LOW);
@@ -140,14 +136,14 @@ var NFC = {
     /*! 
     @brief  Checks the IRQ pin to know if the PN532 is ready
 	
-    @returns 0 if the PN532 is busy, 1 if it is free
+    @returns 1 if the PN532 is busy, 0 if it is free
     */
     /**************************************************************************/
     readStatus: function () {
-        var PN532_I2C_READY = 0x01;
-        var PN532_I2C_BUSY = 0x00;
+        var PN532_I2C_READY = 0x00;
+        var PN532_I2C_BUSY = 0x01;
         var x = GALILEO.digitalRead();
-        if (x == 1)
+        if (x == PN532_I2C_BUSY)
             return PN532_I2C_BUSY;
         else
             return PN532_I2C_READY;
@@ -189,6 +185,7 @@ var NFC = {
         var PN532_I2C_READY = 0x01;
 
         // Wait for chip to say its ready!
+        // Host should not try to read data from PN532 until IRQ line gets low.
         while (this.readStatus() != PN532_I2C_READY) {
             if (timeout != 0) {
                 timer += 10;
@@ -228,7 +225,7 @@ var NFC = {
         sleep(2); // or whatever the delay is for waking up the board
 
         // I2C START
-        WIRE.setBusAddress();
+        WIRE.setBusAddressRead();
         checksum = 0;
         node.warn("Send 00 00 ff 0" + (cmdlen + 1) + " " + (0xFF + ~cmdlen + 1).toString(16) + " d4 " + cmd[0].toString(16) + "..." + (0xFF + ~PN532_HOSTTOPN532 + 1 - cmdlen).toString(16) + " 00");
         WIRE.send(PN532_PREAMBLE);
@@ -256,6 +253,7 @@ var NFC = {
     */
     /**************************************************************************/
     readData: function (buff, len) {
+        WIRE.setBusAddressWrite();
         node.warn("Reading data: ");
         for (var i = 0; i < len; i++) {
             buff[i] = WIRE.receive()
@@ -351,18 +349,33 @@ var GALILEO = {
 }
 /**************************************************************************/
 /*! 
-@brief  I2C bus abstraction on address 2 
+@brief  I2C bus abstraction on PN532_I2C_ADDRESS
+ Eine Standard-I²C-Adresse ist das erste vom Master gesendete Byte, wobei die ersten sieben Bit 
+ die eigentliche Adresse darstellen und das achte Bit (R/W-Bit) dem Slave mitteilt, 
+ ob er Daten vom Master empfangen soll (LOW) oder Daten an den Master zu übertragen hat (HIGH). 
+ I²C nutzt daher einen Adressraum von 7 Bit, was bis zu 112 Knoten auf einem Bus erlaubt 
+ (16 der 128 möglichen Adressen sind für Sonderzwecke reserviert).
 */
 /**************************************************************************/
 var WIRE = {
     MAX_BUFFER_LENGTH: 6,
     CONF_BUFFER_LENGTH: 2,
-    I2C_ADDRESS: 0x48,
+    I2C_ADDRESS: PN532_I2C_ADDRESS,
     conf_buff: 0,
     rx_tx_buf: [0, 0, 0, 0, 0, 0],
     i2c: initI2C(PN532_I2C_ADDRESS),
-    get_address: function () {
-        return this.I2C_ADDRESS;
+    get_address_send_to_master: function () {
+        //(1)1001000
+        var writeaddress = this.I2C_ADDRESS | 1 << 7;
+        node.warn("write_to_master:" + writeaddress.toString(16));
+        node.warn("write_to_master:" + (writeaddress + 0xFF).toString(16));
+        return writeaddress + 0xFF;
+    },
+    get_address_rcv_from_master: function () {
+        //(0)1001000;
+        var readAddress = this.I2C_ADDRESS & ~(1 << 7);
+        node.warn("rcv_from_master:" + readAddress.toString(16));
+        return readAddress;
     },
 
     get_buffer_len: function () {
@@ -398,6 +411,14 @@ var WIRE = {
 
     setBusAddress: function () {
         this.i2c.address(parseInt(this.I2C_ADDRESS));
+    },
+
+    setBusAddressRead: function () {
+        this.i2c.address(parseInt(this.get_address_send_to_master()));
+    },
+
+    setBusAddressWrite: function () {
+        this.i2c.address(parseInt(this.get_address_rcv_from_master()));
     },
 
     receivemultibyte: function (buff, len) {
